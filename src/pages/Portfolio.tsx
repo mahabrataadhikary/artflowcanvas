@@ -19,6 +19,8 @@ import {
 import PhotoAlbum from 'react-photo-album';
 import Lightbox from 'yet-another-react-lightbox';
 import 'yet-another-react-lightbox/styles.css';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 import { cn } from '../lib/utils';
 import { ARTWORKS, WIP_IMAGES, type Artwork } from '../constants';
@@ -82,6 +84,34 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [allArtworks, setAllArtworks] = useState<Artwork[]>(ARTWORKS);
+
+  useEffect(() => {
+    const fetchArtworks = async () => {
+      try {
+        const q = query(collection(db, 'artworks'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const items: Artwork[] = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              title: data.title,
+              category: data.category,
+              src: data.src,
+              width: data.width || 800,
+              height: data.height || 600,
+              description: data.description || '',
+            };
+          });
+          setAllArtworks(items);
+        }
+      } catch (err) {
+        console.warn('Using fallback artworks:', err);
+      }
+    };
+    fetchArtworks();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
@@ -90,8 +120,8 @@ export default function App() {
   }, []);
 
   const filteredArtworks = filter === 'All'
-    ? ARTWORKS
-    : ARTWORKS.filter(art => art.category === filter);
+    ? allArtworks
+    : allArtworks.filter(art => art.category === filter);
 
   const categories = ['All', 'Sketches', 'Watercolors', 'Pen Art', 'Oil Pastels'];
 
@@ -131,7 +161,7 @@ export default function App() {
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center space-x-8 text-sm uppercase tracking-widest font-medium">
-            {['Gallery', 'About', 'Shop', 'Contact'].map((item) => (
+            {['About', 'Gallery', 'Collaborations', 'Contact'].map((item) => (
               <a
                 key={item}
                 href={`#${item.toLowerCase()}`}
@@ -162,7 +192,7 @@ export default function App() {
             className="fixed inset-0 z-40 bg-canvas pt-24 px-6 md:hidden"
           >
             <div className="flex flex-col space-y-8 text-3xl font-serif">
-              {['Gallery', 'About', 'Shop', 'Contact'].map((item) => (
+              {['About', 'Gallery', 'Collaborations', 'Contact'].map((item) => (
                 <a
                   key={item}
                   href={`#${item.toLowerCase()}`}
@@ -403,33 +433,43 @@ export default function App() {
           </div>
         </section>
 
-        {/* Shop/Commission Section */}
-        <section id="shop" className="py-20 bg-white">
-          <div className="max-w-7xl mx-auto px-6 text-center">
-            <h2 className="text-4xl md:text-5xl font-serif mb-6">Bring Art Home</h2>
-            <p className="text-ink/50 max-w-2xl mx-auto mb-16">
-              Limited edition prints and custom commissions are available. Each piece is handled with care and printed on archival quality paper.
-            </p>
+        {/* Collaborations Section */}
+        <section id="collaborations" className="py-32 bg-white text-ink relative overflow-hidden">
+          <div className="max-w-7xl mx-auto px-6 relative z-10">
+            <div className="flex flex-col items-center text-center mb-20">
+              <span className="text-xs uppercase tracking-[0.3em] font-bold text-ink/30 mb-4">Partnerships</span>
+              <h2 className="text-4xl md:text-5xl font-serif mb-6">Collaborations</h2>
+              <div className="w-20 h-1 bg-ink/10 rounded-full" />
+            </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
               {[
-                { title: 'Original Works', price: 'From $450', icon: <Palette size={32} /> },
-                { title: 'Fine Art Prints', price: 'From $65', icon: <ImageIcon size={32} /> },
-                { title: 'Custom Commissions', price: 'Contact for Quote', icon: <PenTool size={32} /> }
-              ].map((item, i) => (
+                { name: "Artisan Studio", img: "/home/mahabrata/.gemini/antigravity/brain/72640f37-f6e2-49a9-bf10-b01209b20355/collab_brand_1_1774212083895.png" },
+                { name: "Creative Synergy", img: "/home/mahabrata/.gemini/antigravity/brain/72640f37-f6e2-49a9-bf10-b01209b20355/collab_brand_2_1774212100665.png" },
+                { name: "Gallery X", img: "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=80&w=500&auto=format&fit=crop" },
+                { name: "Design Collective", img: "https://images.unsplash.com/photo-1549490349-8643362247b5?q=80&w=500&auto=format&fit=crop" },
+              ].map((collab, i) => (
                 <motion.div
-                  key={i}
-                  whileHover={{ y: -10 }}
-                  className="p-10 bg-canvas sketch-border flex flex-col items-center"
+                  key={collab.name}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, duration: 0.8 }}
+                  className="group"
                 >
-                  <div className="w-16 h-16 rounded-full bg-white sketch-border flex items-center justify-center mb-6">
-                    {item.icon}
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-t-full bg-slate-50 border border-ink/5 transition-all duration-500 group-hover:shadow-2xl group-hover:shadow-ink/10 group-hover:-translate-y-2">
+                    <img
+                      src={collab.img}
+                      alt={collab.name}
+                      className="w-full h-full object-cover grayscale opacity-60 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 scale-110 group-hover:scale-100"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-white via-white/0 to-transparent opacity-60" />
                   </div>
-                  <h3 className="text-2xl font-serif mb-2">{item.title}</h3>
-                  <p className="text-ink/40 mb-8 uppercase tracking-widest text-xs font-bold">{item.price}</p>
-                  <button className="w-full py-3 sketch-border hover:bg-ink hover:text-canvas transition-all duration-300 uppercase tracking-widest text-sm font-bold">
-                    Inquire Now
-                  </button>
+                  <div className="mt-6 text-center">
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-ink/40 group-hover:text-ink transition-colors duration-300">
+                      {collab.name}
+                    </h3>
+                  </div>
                 </motion.div>
               ))}
             </div>
