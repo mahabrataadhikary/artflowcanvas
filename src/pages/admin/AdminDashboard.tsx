@@ -3,35 +3,35 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Upload,
-  Instagram,
   LayoutGrid,
   LogOut,
   Palette,
   Image as ImageIcon,
   ChevronRight,
+  Globe
 } from 'lucide-react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import PhotoUploadForm from '../../components/admin/PhotoUploadForm';
-import InstagramLinkForm from '../../components/admin/InstagramLinkForm';
+import { turso } from '../../lib/turso';
+import ImageLinkForm from '../../components/admin/ImageLinkForm';
 import ArtworkList from '../../components/admin/ArtworkList';
 
-type Tab = 'upload' | 'instagram' | 'gallery';
+type Tab = 'upload' | 'gallery';
 
 interface ArtworkItem {
   id: string;
   title: string;
   category: string;
   src: string;
-  source: 'upload' | 'instagram';
+  source: 'upload' | 'instagram' | 'link';
   instagramUrl?: string;
   description: string;
+  section: 'gallery' | 'collaboration';
 }
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>('upload');
   const [artworks, setArtworks] = useState<ArtworkItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>('upload');
+  const [editingArtwork, setEditingArtwork] = useState<ArtworkItem | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,12 +45,17 @@ export default function AdminDashboard() {
   const fetchArtworks = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'artworks'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const items: ArtworkItem[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as ArtworkItem));
+      const result = await turso.execute('SELECT * FROM artworks ORDER BY createdAt DESC');
+      const items: ArtworkItem[] = result.rows.map(row => ({
+        id: row.id as string,
+        title: row.title as string,
+        category: row.category as string,
+        src: row.src as string,
+        source: row.source as 'upload' | 'instagram' | 'link',
+        instagramUrl: row.instagramUrl as string,
+        description: row.description as string,
+        section: row.section as 'gallery' | 'collaboration',
+      }));
       setArtworks(items);
     } catch (err) {
       console.error('Failed to fetch artworks:', err);
@@ -64,10 +69,29 @@ export default function AdminDashboard() {
     navigate('/admin');
   };
 
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    if (tab !== 'upload') setEditingArtwork(null);
+  };
+
+  const handleEdit = (artwork: ArtworkItem) => {
+    setEditingArtwork(artwork);
+    setActiveTab('upload');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode; desc: string }[] = [
-    { id: 'upload', label: 'Upload Photo', icon: <Upload size={18} />, desc: 'Upload from device' },
-    { id: 'instagram', label: 'From Instagram', icon: <Instagram size={18} />, desc: 'Add via link' },
-    { id: 'gallery', label: 'All Artworks', icon: <LayoutGrid size={18} />, desc: `${artworks.length} items` },
+    { id: 'upload', label: editingArtwork ? 'Edit Item' : 'Add Image Link', icon: <Upload size={18} />, desc: editingArtwork ? 'Update details' : 'Add via URL' },
+    { id: 'gallery', label: 'Manage All', icon: <LayoutGrid size={18} />, desc: `${artworks.length} items` },
+  ];
+
+  const galleryItems = artworks.filter(a => a.section === 'gallery');
+  const collabItems = artworks.filter(a => a.section === 'collaboration');
+
+  const stats = [
+    { label: 'Art Gallery', value: galleryItems.length, icon: <ImageIcon size={18} /> },
+    { label: 'Collaborations', value: collabItems.length, icon: <Globe size={18} /> },
+    { label: 'Total Items', value: artworks.length, icon: <LayoutGrid size={18} /> },
   ];
 
   return (
@@ -113,11 +137,7 @@ export default function AdminDashboard() {
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         {/* Stats ribbon */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          {[
-            { label: 'Total Artworks', value: artworks.length, icon: <ImageIcon size={18} /> },
-            { label: 'Uploaded', value: artworks.filter(a => a.source === 'upload').length, icon: <Upload size={18} /> },
-            { label: 'From Instagram', value: artworks.filter(a => a.source === 'instagram').length, icon: <Instagram size={18} /> },
-          ].map((stat) => (
+          {stats.map((stat) => (
             <div key={stat.label} className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-white/25">
                 {stat.icon}
@@ -135,7 +155,7 @@ export default function AdminDashboard() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`flex-1 relative flex items-center justify-center gap-2.5 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-300 ${
                 activeTab === tab.id
                   ? 'text-white'
@@ -170,31 +190,29 @@ export default function AdminDashboard() {
               >
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-8">
                   <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-white/80">Upload Artwork</h2>
-                    <p className="text-xs text-white/30 mt-1">Upload an image file from your device</p>
+                    <h2 className="text-lg font-semibold text-white/80">
+                      {editingArtwork ? 'Edit Artwork' : 'Add Image'}
+                    </h2>
+                    <p className="text-xs text-white/30 mt-1">
+                      {editingArtwork ? 'Update the details for this piece' : 'Add an image link for Gallery or Collaborations'}
+                    </p>
                   </div>
-                  <PhotoUploadForm onSuccess={fetchArtworks} />
+                  <ImageLinkForm 
+                    key={editingArtwork?.id || 'new'}
+                    initialData={editingArtwork}
+                    onSuccess={() => {
+                      setEditingArtwork(null);
+                      fetchArtworks();
+                      if (editingArtwork) setActiveTab('gallery');
+                    } }
+                    onCancel={() => {
+                      setEditingArtwork(null);
+                    }}
+                  />
                 </div>
               </motion.div>
             )}
 
-            {activeTab === 'instagram' && (
-              <motion.div
-                key="instagram"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-              >
-                <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-8">
-                  <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-white/80">Add from Instagram</h2>
-                    <p className="text-xs text-white/30 mt-1">Import artwork by providing the Instagram post URL</p>
-                  </div>
-                  <InstagramLinkForm onSuccess={fetchArtworks} />
-                </div>
-              </motion.div>
-            )}
 
             {activeTab === 'gallery' && (
               <motion.div
@@ -214,7 +232,11 @@ export default function AdminDashboard() {
                     <div className="w-8 h-8 border-2 border-white/10 border-t-purple-400 rounded-full animate-spin" />
                   </div>
                 ) : (
-                  <ArtworkList artworks={artworks} onDelete={fetchArtworks} />
+                  <ArtworkList 
+                    artworks={artworks} 
+                    onDelete={fetchArtworks} 
+                    onEdit={handleEdit}
+                  />
                 )}
               </motion.div>
             )}

@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Trash2, Instagram, Upload, ExternalLink, Image as ImageIcon } from 'lucide-react';
-import { doc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { Trash2, Instagram, Upload, ExternalLink, Image as ImageIcon, Pencil } from 'lucide-react';
+import { turso } from '../../lib/turso';
 import toast from 'react-hot-toast';
 
 interface ArtworkItem {
@@ -9,22 +8,27 @@ interface ArtworkItem {
   title: string;
   category: string;
   src: string;
-  source: 'upload' | 'instagram';
+  source: 'upload' | 'instagram' | 'link';
   instagramUrl?: string;
   description: string;
+  section: 'gallery' | 'collaboration';
 }
 
 interface Props {
   artworks: ArtworkItem[];
   onDelete: () => void;
+  onEdit: (artwork: ArtworkItem) => void;
 }
 
-export default function ArtworkList({ artworks, onDelete }: Props) {
+export default function ArtworkList({ artworks, onDelete, onEdit }: Props) {
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
 
     try {
-      await deleteDoc(doc(db, 'artworks', id));
+      await turso.execute({
+        sql: 'DELETE FROM artworks WHERE id = ?',
+        args: [id],
+      });
       toast.success(`"${title}" deleted`);
       onDelete();
     } catch (err: any) {
@@ -97,6 +101,12 @@ export default function ArtworkList({ artworks, onDelete }: Props) {
                       <ExternalLink size={12} />
                     </a>
                   )}
+                  <button
+                    onClick={() => onEdit(art)}
+                    className="w-8 h-8 rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-white/25 hover:text-white hover:border-white/30 hover:bg-white/10 transition-all"
+                  >
+                    <Pencil size={12} />
+                  </button>
                   <button
                     onClick={() => handleDelete(art.id, art.title)}
                     className="w-8 h-8 rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-white/25 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all"

@@ -19,8 +19,7 @@ import {
 import PhotoAlbum from 'react-photo-album';
 import Lightbox from 'yet-another-react-lightbox';
 import 'yet-another-react-lightbox/styles.css';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { turso } from '../lib/turso';
 
 import { cn } from '../lib/utils';
 import { ARTWORKS, WIP_IMAGES, type Artwork } from '../constants';
@@ -77,6 +76,70 @@ function ScrollAnimatedText({ words }: { words: (string | ReactNode)[] }) {
   );
 }
 
+function CollaborationCard({ collab, index, total }: { collab: any, index: number, total: number }) {
+  const container = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: container,
+    offset: ['start end', 'start start']
+  });
+
+  // Scale and Opacity for the card itself as it enters and stays
+  const scale = useTransform(scrollYProgress, [0, 1], [0.9, 1]);
+  const opacity = useTransform(scrollYProgress, [0, 0.3, 1], [0, 1, 1]);
+  
+  // Sticky offset - simple fixed offset for a clean overlap
+  const topOffset = 100 + index * 40;
+
+  return (
+    <div 
+      ref={container} 
+      className="h-[80vh] md:h-[100vh] flex items-center justify-center sticky"
+      style={{ top: `${topOffset}px` }}
+    >
+      <motion.div
+        style={{ scale, opacity }}
+        className="relative w-[90vw] md:w-[450px] aspect-[4/5] bg-white rounded-[2rem] overflow-hidden shadow-[0_40px_80px_-15px_rgba(0,0,0,0.15)] border border-ink/[0.04] group flex flex-col"
+      >
+        {/* Image Area - 70% height */}
+        <div className="w-full h-[70%] overflow-hidden relative">
+          <motion.img
+            src={collab.src}
+            alt={collab.title}
+            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent opacity-40" />
+        </div>
+        
+        {/* Content Area - 30% height */}
+        <div className="w-full h-[30%] px-8 py-6 flex flex-col justify-center bg-white">
+          <div className="mb-2">
+            <span className="text-[10px] uppercase tracking-[0.4em] font-bold text-ink/20 mb-1 block">Collaboration {index + 1}</span>
+            <h3 className="text-2xl font-serif text-ink leading-tight">{collab.title}</h3>
+          </div>
+          
+          <p className="text-ink/40 text-xs md:text-sm leading-relaxed mb-4 line-clamp-2">
+            {collab.description || "A creative exploration of form and emotion through unique collaborative expression."}
+          </p>
+          
+          {collab.instagramUrl && (
+            <a 
+              href={collab.instagramUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-3 text-[10px] uppercase tracking-widest font-bold text-ink/30 hover:text-[#E4405F] transition-all group/btn w-fit"
+            >
+              <div className="w-8 h-8 rounded-full border border-ink/10 flex items-center justify-center group-hover/btn:border-[#E4405F]/30 group-hover/btn:bg-[#E4405F]/5 transition-all">
+                <Instagram size={14} />
+              </div>
+              <span className="opacity-0 group-hover/btn:opacity-100 transition-opacity">View Post</span>
+            </a>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function App() {
   const [filter, setFilter] = useState<string>('All');
   const [index, setIndex] = useState(-1);
@@ -84,27 +147,28 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [allArtworks, setAllArtworks] = useState<Artwork[]>(ARTWORKS);
+  const [allArtworks, setAllArtworks] = useState<Artwork[]>([]);
+  const [collaborations, setCollaborations] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchArtworks = async () => {
       try {
-        const q = query(collection(db, 'artworks'), orderBy('createdAt', 'desc'));
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const items: Artwork[] = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              title: data.title,
-              category: data.category,
-              src: data.src,
-              width: data.width || 800,
-              height: data.height || 600,
-              description: data.description || '',
-            };
-          });
-          setAllArtworks(items);
+        const result = await turso.execute('SELECT * FROM artworks ORDER BY createdAt DESC');
+        if (result.rows.length > 0) {
+          const items: any[] = result.rows.map(row => ({
+            id: row.id,
+            title: row.title,
+            category: row.category,
+            src: row.src,
+            width: Number(row.width) || 800,
+            height: Number(row.height) || 600,
+            description: row.description || '',
+            section: row.section || 'gallery',
+            instagramUrl: row.instagramUrl || '',
+          }));
+          
+          setAllArtworks(items.filter(item => item.section === 'gallery'));
+          setCollaborations(items.filter(item => item.section === 'collaboration'));
         }
       } catch (err) {
         console.warn('Using fallback artworks:', err);
@@ -221,7 +285,7 @@ export default function App() {
               transition={{ duration: 0.8 }}
             >
               <span className="inline-block text-xs uppercase tracking-[0.3em] font-semibold mb-6 text-ink/50">
-                Visual Artist & Illustrator
+               
               </span>
               <h1 className="text-6xl lg:text-8xl font-serif leading-[0.9] mb-8 tracking-tight">
                 Capturing Life <br />
@@ -335,7 +399,7 @@ export default function App() {
                       <motion.div
                         key={art.title + i}
                         className={cn(
-                          "absolute w-[75%] md:w-[55%] aspect-[4/3] rounded-xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 bg-white/5 backdrop-blur-xl transition-all",
+                          "absolute w-[75%] md:w-[55%] aspect-square rounded-xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 bg-white/5 backdrop-blur-xl transition-all",
                           isActive ? "z-30 cursor-grab active:cursor-grabbing hover:border-white/30" : MathAbs === 1 ? "z-20 cursor-pointer" : MathAbs === 2 ? "z-10 cursor-pointer" : "z-0 pointer-events-none"
                         )}
                         initial={false}
@@ -434,44 +498,50 @@ export default function App() {
         </section>
 
         {/* Collaborations Section */}
-        <section id="collaborations" className="py-32 bg-white text-ink relative overflow-hidden">
-          <div className="max-w-7xl mx-auto px-6 relative z-10">
-            <div className="flex flex-col items-center text-center mb-20">
-              <span className="text-xs uppercase tracking-[0.3em] font-bold text-ink/30 mb-4">Partnerships</span>
-              <h2 className="text-4xl md:text-5xl font-serif mb-6">Collaborations</h2>
-              <div className="w-20 h-1 bg-ink/10 rounded-full" />
+        <section id="collaborations" className="bg-[#f8f8f8] text-ink relative pb-[10vh]">
+          <div className="max-w-5xl mx-auto px-6 pt-32">
+            <div className="flex flex-col items-center text-center mb-32">
+              <motion.span 
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="text-xs uppercase tracking-[0.4em] font-bold text-ink/30 mb-6"
+              >
+                Instagram
+              </motion.span>
+              <motion.h2 
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.1 }}
+                className="text-5xl md:text-7xl font-serif mb-8"
+              >
+                Collaborations
+              </motion.h2>
+              <motion.div 
+                initial={{ scaleX: 0 }}
+                whileInView={{ scaleX: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.3, duration: 0.8 }}
+                className="w-24 h-[1px] bg-ink/20" 
+              />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
-              {[
-                { name: "Artisan Studio", img: "/home/mahabrata/.gemini/antigravity/brain/72640f37-f6e2-49a9-bf10-b01209b20355/collab_brand_1_1774212083895.png" },
-                { name: "Creative Synergy", img: "/home/mahabrata/.gemini/antigravity/brain/72640f37-f6e2-49a9-bf10-b01209b20355/collab_brand_2_1774212100665.png" },
-                { name: "Gallery X", img: "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=80&w=500&auto=format&fit=crop" },
-                { name: "Design Collective", img: "https://images.unsplash.com/photo-1549490349-8643362247b5?q=80&w=500&auto=format&fit=crop" },
-              ].map((collab, i) => (
-                <motion.div
-                  key={collab.name}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1, duration: 0.8 }}
-                  className="group"
-                >
-                  <div className="relative aspect-[4/5] overflow-hidden rounded-t-full bg-slate-50 border border-ink/5 transition-all duration-500 group-hover:shadow-2xl group-hover:shadow-ink/10 group-hover:-translate-y-2">
-                    <img
-                      src={collab.img}
-                      alt={collab.name}
-                      className="w-full h-full object-cover grayscale opacity-60 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-700 scale-110 group-hover:scale-100"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-white via-white/0 to-transparent opacity-60" />
-                  </div>
-                  <div className="mt-6 text-center">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-ink/40 group-hover:text-ink transition-colors duration-300">
-                      {collab.name}
-                    </h3>
-                  </div>
-                </motion.div>
-              ))}
+            <div className="relative flex flex-col gap-[15vh]">
+              {collaborations.length > 0 ? (
+                collaborations.map((collab, i) => (
+                  <CollaborationCard 
+                    key={collab.id || collab.title}
+                    collab={collab}
+                    index={i}
+                    total={collaborations.length}
+                  />
+                ))
+              ) : (
+                <div className="py-20 text-center text-ink/20 font-serif">
+                  New collaborations coming soon.
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -521,10 +591,7 @@ export default function App() {
             Kounik Adhikary.
           </div>
 
-          <div className="flex gap-8 text-xs uppercase tracking-widest font-bold opacity-40">
-            <a href="#" className="hover:opacity-100 transition-opacity">Privacy Policy</a>
-            <a href="#" className="hover:opacity-100 transition-opacity">Terms of Service</a>
-          </div>
+          
         </div>
       </footer>
     </div>
