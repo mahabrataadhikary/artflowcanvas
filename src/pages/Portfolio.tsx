@@ -76,7 +76,14 @@ function ScrollAnimatedText({ words }: { words: (string | ReactNode)[] }) {
   );
 }
 
-function CollaborationCard({ collab, index, total }: { collab: any, index: number, total: number }) {
+interface CollaborationCardProps {
+  collab: any;
+  index: number;
+  total: number;
+  key?: any;
+}
+
+function CollaborationCard({ collab, index, total }: CollaborationCardProps) {
   const container = useRef(null);
   const { scrollYProgress } = useScroll({
     target: container,
