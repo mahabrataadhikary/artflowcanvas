@@ -14,15 +14,28 @@ export default function AdminLogin() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Small delay for UX feel
-    await new Promise(r => setTimeout(r, 600));
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password }),
+      });
 
-    if (password === import.meta.env.VITE_ADMIN_PASSWORD) {
-      sessionStorage.setItem('admin_authenticated', 'true');
-      toast.success('Welcome back, artist!');
-      navigate('/admin/dashboard');
-    } else {
-      toast.error('Invalid password. Try again.');
+      const data = await response.json();
+
+      if (data.success) {
+        sessionStorage.setItem('admin_authenticated', 'true');
+        toast.success('Welcome back, artist!');
+        navigate('/admin/dashboard');
+      } else {
+        toast.error('Invalid password. Try again.');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
       setIsLoading(false);
     }
   };
